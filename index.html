@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>商品静物路径追踪 · 分布式采样汇合</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #14161a; color: #cfd3da; }
+  header { padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2a2e37;
+           font-size: 15px; font-weight: 600; }
+  header small { font-weight: 400; color: #8a90a0; margin-left: 10px; }
+  main { display: grid; grid-template-columns: 290px 1fr 300px; gap: 12px; padding: 12px; }
+  section { background: #1c1f26; border: 1px solid #2a2e37; border-radius: 8px; padding: 12px; }
+  h2 { font-size: 13px; margin: 0 0 10px; color: #9fb4ff; font-weight: 600; }
+  label { display: block; margin: 8px 0 2px; color: #8a90a0; }
+  select, input[type=number] { width: 100%; background: #14161a; color: #cfd3da;
+    border: 1px solid #343945; border-radius: 5px; padding: 5px 7px; }
+  .chk { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+  .chk input { width: auto; }
+  .chk label { margin: 0; color: #cfd3da; }
+  button { width: 100%; margin-top: 8px; padding: 7px 0; border: 0; border-radius: 5px;
+           background: #3b5bdb; color: #fff; font-weight: 600; cursor: pointer; }
+  button.secondary { background: #2a2e37; color: #cfd3da; }
+  button:disabled { opacity: 0.38; cursor: not-allowed; }
+  #stateBadge { display: inline-block; padding: 2px 10px; border-radius: 10px;
+                background: #2a2e37; font-size: 12px; }
+  #stateBadge.running { background: #2b5d2b; }
+  #stateBadge.incomplete { background: #7a4a1d; }
+  #stateBadge.complete { background: #1d5f5f; }
+  .bar { height: 8px; background: #14161a; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+  .bar > div { height: 100%; background: #3b5bdb; width: 0; transition: width .15s; }
+  canvas { display: block; image-rendering: pixelated; background: #000; }
+  #renderCanvas { width: 100%; border-radius: 4px; }
+  .row { display: flex; gap: 12px; margin-top: 12px; }
+  .row > div { flex: 1; }
+  #heatCanvas, #noiseCanvas { width: 100%; border-radius: 4px; background: #14161a; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+  dt { color: #8a90a0; } dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+  #log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 170px; overflow-y: auto;
+         font: 11px/1.6 ui-monospace, monospace; color: #8a90a0; }
+  #log li b { color: #cfd3da; font-weight: 400; }
+  .warn { color: #e8a04c; }
+</style>
+</head>
+<body>
+<header>商品静物路径追踪 · 分布式采样汇合<small>确定性样本索引 · 加权汇合 · 故障注入演练</small></header>
+<main>
+  <section id="panel">
+    <h2>出图任务面板</h2>
+    <label>采样预算（每像素样本数 spp）</label>
+    <select id="budgetSelect">
+      <option>64</option><option selected>128</option><option>256</option><option>512</option>
+    </select>
+    <label>区间大小（每任务样本数）</label>
+    <select id="chunkSelect"><option>8</option><option selected>16</option><option>32</option></select>
+    <label>工作进程数</label>
+    <select id="workerSelect"><option>1</option><option>2</option><option selected>4</option><option>6</option><option>8</option></select>
+    <label>故障注入种子</label>
+    <input type="number" id="seedInput" value="20261117">
+    <div class="chk"><input type="checkbox" id="faultRetry"><label for="faultRetry">注入任务重试（崩溃重派 / 重复回传）</label></div>
+    <div class="chk"><input type="checkbox" id="faultLoss"><label for="faultLoss">注入区间遗失（结果丢失待补采）</label></div>
+    <div class="chk"><input type="checkbox" id="faultShuffle"><label for="faultShuffle">注入回传顺序打乱</label></div>
+    <label>曝光</label>
+    <input type="range" id="exposureRange" min="0.3" max="3" step="0.1" value="1.1" style="width:100%">
+    <button id="startBtn">开始渲染</button>
+    <button id="pauseBtn" class="secondary" disabled>暂停</button>
+    <button id="healBtn" class="secondary" disabled>补采缺失区间</button>
+    <button id="refBtn" class="secondary" disabled>运行单进程参考对比</button>
+    <button id="resetBtn" class="secondary" disabled>重置</button>
+    <div style="margin-top:12px">状态 <span id="stateBadge">空闲</span></div>
+    <div class="bar"><div id="progressFill"></div></div>
+    <div id="progressText" style="color:#8a90a0;margin-top:4px">—</div>
+  </section>
+
+  <section id="view">
+    <h2>汇合图像（渐进收敛）</h2>
+    <canvas id="renderCanvas" width="160" height="120"></canvas>
+    <div class="row">
+      <div>
+        <h2>局部进展（每瓦片已接受样本）</h2>
+        <canvas id="heatCanvas" width="8" height="6"></canvas>
+      </div>
+      <div>
+        <h2>噪声变化（均值标准误 vs 已接受样本）</h2>
+        <canvas id="noiseCanvas" width="560" height="160"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section id="stats">
+    <h2>汇合统计</h2>
+    <dl>
+      <dt>已接受样本</dt><dd id="statAccepted">0 / 0</dd>
+      <dt>每像素样本 min/max</dt><dd id="statPerPixel">—</dd>
+      <dt>区间覆盖</dt><dd id="statCoverage">—</dd>
+      <dt>噪声估计</dt><dd id="statNoise">—</dd>
+      <dt>重复回传拒绝</dt><dd id="statDup">0</dd>
+      <dt>重试次数</dt><dd id="statRetry">0</dd>
+      <dt>遗失待补区间</dt><dd id="statLost">0</dd>
+      <dt>与参考 RMSE</dt><dd id="statRmse">—</dd>
+      <dt>与参考最大差</dt><dd id="statMaxAbs">—</dd>
+    </dl>
+    <h2 style="margin-top:12px">事件日志</h2>
+    <ul id="log"></ul>
+  </section>
+</main>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
