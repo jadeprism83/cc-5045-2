@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>多进程采样汇合 · 出图任务面板</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #14161a; color: #cfd3da; }
+  header { padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2a2e37;
+           font-size: 15px; font-weight: 600; }
+  header small { font-weight: 400; color: #8a90a0; margin-left: 10px; }
+  main { display: grid; grid-template-columns: 280px 1fr 290px; gap: 12px; padding: 12px; }
+  section { background: #1c1f26; border: 1px solid #2a2e37; border-radius: 8px; padding: 12px; }
+  h2 { font-size: 13px; margin: 0 0 10px; color: #9fb4ff; font-weight: 600; }
+  label { display: block; margin: 8px 0 2px; color: #8a90a0; }
+  select, input { width: 100%; background: #14161a; color: #cfd3da;
+    border: 1px solid #343945; border-radius: 5px; padding: 5px 7px; }
+  button { width: 100%; margin-top: 8px; padding: 7px 0; border: 0; border-radius: 5px;
+           background: #3b5bdb; color: #fff; font-weight: 600; cursor: pointer; }
+  button.secondary { background: #2a2e37; color: #cfd3da; }
+  button:disabled { opacity: 0.38; cursor: not-allowed; }
+  #stateBadge { display: inline-block; padding: 2px 10px; border-radius: 10px;
+                background: #2a2e37; font-size: 12px; }
+  #stateBadge.running { background: #2b5d2b; }
+  #stateBadge.complete { background: #1d5f5f; }
+  #stateBadge.offline { background: #6d2626; }
+  .bar { height: 8px; background: #14161a; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+  .bar > div { height: 100%; background: #3b5bdb; width: 0; transition: width .2s; }
+  canvas { display: block; image-rendering: pixelated; background: #000; }
+  #renderCanvas { width: 100%; border-radius: 4px; }
+  .row { display: flex; gap: 12px; margin-top: 12px; }
+  .row > div { flex: 1; }
+  #noiseCanvas, #meanCanvas { width: 100%; border-radius: 4px; background: #14161a; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+  dt { color: #8a90a0; } dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+  #log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 200px; overflow-y: auto;
+         font: 11px/1.6 ui-monospace, monospace; color: #8a90a0; }
+  #log li b { color: #cfd3da; font-weight: 400; }
+  .warn { color: #e8a04c; } .ok { color: #6fd08f; }
+  .nodes { font: 11px ui-monospace, monospace; }
+  .nodes .off { color: #e07a6f; } .nodes .on { color: #6fd08f; }
+</style>
+</head>
+<body>
+<header>多进程采样汇合 · 出图任务面板<small>真实汇合服务实时数据 · 确定性样本索引 · 噪声/均值曲线</small></header>
+<main>
+  <section>
+    <h2>采样任务</h2>
+    <label>采样预算（每像素样本数 spp）</label>
+    <select id="budgetSelect">
+      <option>64</option><option selected>128</option><option>256</option><option>512</option>
+    </select>
+    <label>任务 ID（留空自动生成）</label>
+    <input id="jobIdInput" placeholder="job-…">
+    <button id="startBtn">开始采样</button>
+    <button id="publishBtn" class="secondary" disabled>发布产物（门槛校验）</button>
+    <button id="refreshBtn" class="secondary">立即刷新</button>
+    <div style="margin-top:12px">状态 <span id="stateBadge">未连接</span></div>
+    <div class="bar"><div id="progressFill"></div></div>
+    <div id="progressText" style="color:#8a90a0;margin-top:4px">—</div>
+    <h2 style="margin-top:14px">节点心跳</h2>
+    <div id="nodeList" class="nodes">—</div>
+    <p style="color:#8a90a0;font-size:11px;margin:10px 0 0">
+      本面板直接调用采样汇合 HTTP API；图像、噪声与均值均来自服务端实时汇合结果，无任何固定占位数据。
+    </p>
+  </section>
+
+  <section>
+    <h2>汇合图像（实时渐进收敛）</h2>
+    <canvas id="renderCanvas" width="160" height="120"></canvas>
+    <div class="row">
+      <div>
+        <h2>噪声变化（均值标准误 vs 已接受样本）</h2>
+        <canvas id="noiseCanvas" width="560" height="170"></canvas>
+      </div>
+      <div>
+        <h2>图像均值随采样累积变化</h2>
+        <canvas id="meanCanvas" width="560" height="170"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>汇合统计（服务端实测）</h2>
+    <dl>
+      <dt>已接受区间</dt><dd id="stIntervals">—</dd>
+      <dt>已接受样本</dt><dd id="stSamples">—</dd>
+      <dt>每像素计数 min/max</dt><dd id="stPerPixel">—</dd>
+      <dt>图像均值</dt><dd id="stMean">—</dd>
+      <dt>通道均值 RGB</dt><dd id="stChannels">—</dd>
+      <dt>噪声估计 SE</dt><dd id="stNoise">—</dd>
+      <dt>重复回传拒绝</dt><dd id="stDup">—</dd>
+      <dt>校验拒绝</dt><dd id="stRejected">—</dd>
+      <dt>发布状态</dt><dd id="stPublish">—</dd>
+    </dl>
+    <h2 style="margin-top:12px">事件日志</h2>
+    <ul id="log"></ul>
+  </section>
+</main>
+<script type="module" src="./panel.mjs"></script>
+</body>
+</html>

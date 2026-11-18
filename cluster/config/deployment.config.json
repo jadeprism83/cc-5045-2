@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "deploymentId": "local-multiprocess-cluster-v1",
+  "rendezvous": {
+    "host": "127.0.0.1",
+    "port": 8731,
+    "stateDir": "cluster/run/state",
+    "outputDir": "cluster/run/output",
+    "logDir": "cluster/run/logs",
+    "heartbeatTimeoutMs": 15000,
+    "jobLeaseMs": 30000
+  },
+  "workerRuntimePackage": {
+    "entry": "cluster/worker/worker.mjs",
+    "requirements": ["node >= 18"],
+    "bundledModules": [
+      "src/rng.js",
+      "src/scene.js",
+      "src/tracer.js",
+      "cluster/worker/render-task.mjs",
+      "cluster/worker/worker.mjs"
+    ],
+    "requiredEnv": ["RV_URL", "NODE_ID"],
+    "forbiddenSilentDefaults": [
+      "RV_URL 缺失时不得回退默认地址，必须报错退出",
+      "NODE_ID 缺失时不得自动编号，必须报错退出",
+      "任务字段缺失时不得用默认值补全，必须拒绝执行"
+    ]
+  },
+  "nodes": [
+    { "nodeId": "node-1", "weight": 1 },
+    { "nodeId": "node-2", "weight": 1 },
+    { "nodeId": "node-3", "weight": 1 },
+    { "nodeId": "node-4", "weight": 1 }
+  ],
+  "worker": {
+    "pollIntervalMs": 120,
+    "heartbeatIntervalMs": 3000,
+    "maxResultRetries": 8,
+    "backoffBaseMs": 250
+  }
+}

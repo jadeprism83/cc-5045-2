@@ -1,0 +1,31 @@
+{
+  "name": "sampling-worker-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "采样节点运行包：确定性计数器随机数路径追踪 worker，向采样汇合服务认领区间并回传 Welford 统计。禁止静默默认值。",
+  "main": "worker.mjs",
+  "engines": { "node": ">=18" },
+  "requiredEnv": {
+    "RV_URL": "采样汇合服务地址，缺失即退出码 2，不回退默认地址",
+    "NODE_ID": "部署配置中登记的节点 ID，缺失即退出码 2，不自动编号",
+    "JOB_ID": "要处理的采样任务 ID（可选；缺失时节点仅维持心跳后退出）"
+  },
+  "optionalEnv": {
+    "POLL_MS": "认领轮询间隔，默认 120",
+    "HEARTBEAT_MS": "心跳间隔，默认 3000",
+    "MAX_IDLE_POLLS": "连续空转多少次后退出，默认 40",
+    "CRASH_BEFORE_KEY": "故障注入：执行到该区间 key 前以退出码 91 崩溃",
+    "DROP_EVERY": "故障注入：每生产 N 个结果丢弃 1 个（模拟区间遗失）"
+  },
+  "bundle": [
+    "src/rng.js",
+    "src/scene.js",
+    "src/tracer.js",
+    "cluster/worker/render-task.mjs",
+    "cluster/worker/worker.mjs"
+  ],
+  "scripts": {
+    "start": "node cluster/worker/worker.mjs"
+  }
+}

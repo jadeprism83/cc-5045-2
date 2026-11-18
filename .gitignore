@@ -23,3 +23,6 @@ __pycache__/
 *.log
 .env
 .env.*
+
+# 采样集群运行期产物（PID / 事件日志 / 输出 / 失败日志），不入库
+cluster/run/

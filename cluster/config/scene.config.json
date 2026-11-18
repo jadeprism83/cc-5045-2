@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "locked": true,
+  "sceneId": "still-life-product-v1",
+  "sceneModule": "../../src/scene.js",
+  "image": { "width": 160, "height": 120, "tileSize": 20 },
+  "sequenceAllocation": {
+    "policy": "counter-indexed-global-stride",
+    "description": "样本由 (pixel, globalSampleIndex, dim) 经 hash32 计数器索引唯一确定；全局样本编号区间按 intervalId 锁定，节点仅认领区间，不拥有样本号段。节点重启、换节点、回传乱序都不改变任一样本内容，也不会重号。",
+    "rngModule": "../../src/rng.js",
+    "rngFunction": "randIndex",
+    "chunkSize": 16,
+    "budgets": [64, 128, 256, 512],
+    "defaultBudget": 128
+  },
+  "validation": {
+    "maxDuplicatesAfterComplete": 0,
+    "perPixelCountMustEqualBudget": true,
+    "maxReferenceRmse": 1e-9,
+    "imageMeanChannelTolerance": 0.05,
+    "requiredPublishArtifacts": ["image.ppm", "stats.json", "journal.jsonl", "checksums.sha256"]
+  },
+  "faultInjection": {
+    "workerCrashEvery": 0,
+    "workerCrashBeforeKey": null,
+    "dropResultEvery": 0
+  }
+}

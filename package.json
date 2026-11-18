@@ -1,0 +1,17 @@
+{
+  "name": "multiprocess-sampling-cluster",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "小型多进程路径追踪采样集群：确定性样本索引、HTTP 采样汇合、工作节点部署、启停/健康检查与出图任务面板。",
+  "scripts": {
+    "test:kernel": "node test/verify.mjs",
+    "test:cluster": "node cluster/test/cluster-evidence.test.mjs",
+    "test": "node test/verify.mjs && node cluster/test/cluster-evidence.test.mjs",
+    "cluster:start": "node cluster/scripts/start-cluster.mjs",
+    "cluster:stop": "node cluster/scripts/stop-cluster.mjs",
+    "cluster:health": "node cluster/scripts/health-check.mjs",
+    "cluster:restart-node": "node cluster/scripts/restart-node.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

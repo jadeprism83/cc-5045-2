@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "legacy": true,
+  "description": "旧样例运行配置：保留早期 48x36 小尺寸渲染样例用于回归。采样预算仍受锁定列表约束（取最小档 64spp），仅图像尺寸/瓦片/区间大小按旧样例覆盖；随机序列分配策略不变。汇合内核与集群改动后，旧样例必须仍能运行到底并通过发布门槛。",
+  "jobIdPrefix": "legacy-still-life",
+  "budget": 64,
+  "legacyOverride": { "width": 48, "height": 36, "tileSize": 12, "chunkSize": 6 }
+}
